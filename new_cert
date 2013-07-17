@@ -48,6 +48,7 @@ SUBJ_DN=''
 (( flBInteractive )) || SUBJ_DN="-subj \"$BASEDN/CN=$FQDN/UID=$SERVICE\""
 
 if eval "openssl req -new -nodes -out $CSR_FILE -keyout $KEY_FILE -multivalue-rdn $SUBJ_DN $X509_EXTS -config $CONF"; then
+ chmod 600 $KEY_FILE
  if openssl ca -out $CERT_FILE -config $CONF $X509_EXTS -infiles $CSR_FILE; then
   echo 'DONE'
  else
