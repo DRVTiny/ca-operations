@@ -1,0 +1,67 @@
+#!/bin/bash
+slf=${0##*/}
+doShowUsage () {
+ cat <<EOF 
+Syntax:
+$slf [-b] FQDN SERVICE
+-b If you want to create bundle (tar.bz2 with all files necessary to export to external systems on which service is located)
+-s To create server certificate
+-i To create certificate request in hand-driven interactive mode
+-h Show usage information (i.e. this message)  
+EOF
+ return 0
+}
+
+(( $# >= 2 )) || { doShowUsage; exit 1; }
+
+flCreateBundle=0; flIsServerCertificate=0
+while getopts 'bsi' OPT; do
+ case $OPT in
+ b) flCreateBundle=1        ;;
+ s) flIsServerCertificate=1 ;;
+ x) set -x; DEBUG=1         ;;
+ i) flBInteractive=1        ;;
+ h) doShowUsage; exit 0     ;;
+ \?) echo "${0##*/}: Error: Unknown key: -$OPT" >&2
+     doShowUsage
+     exit 1
+ ;;
+ esac
+done
+shift $((OPTIND-1))
+
+read FQDN SERVICE <<<"$@"
+
+[[ $CA_PATH && -d $CA_PATH && -f "$CA_PATH/conf/openssl.cnf" && -r "$CA_PATH/conf/openssl.cnf" ]] || exit 2
+
+BASEDN='/C=RU/ST=Russia/O=NAMOS/OU=IT'
+CONF='conf/openssl.cnf'
+KEY_FILE="key/${FQDN}_${SERVICE}.key"
+CSR_FILE="req/${FQDN}_${SERVICE}.csr"
+CERT_FILE="cert/${FQDN}_${SERVICE}.crt"
+X509_EXTS=''
+(( flIsServerCertificate )) && X509_EXTS='-extensions server'
+
+cd "$CA_PATH" || exit 3
+
+SUBJ_DN=''
+(( flBInteractive )) || SUBJ_DN="-subj \"$BASEDN/CN=$FQDN/UID=$SERVICE\""
+
+if eval "openssl req -new -nodes -out $CSR_FILE -keyout $KEY_FILE -multivalue-rdn $SUBJ_DN $X509_EXTS -config $CONF"; then
+ if openssl ca -out $CERT_FILE -config $CONF $X509_EXTS -infiles $CSR_FILE; then
+  echo 'DONE'
+ else
+  rm -f "$KEY_FILE" "$CSR_FILE" "$CERT_FILE"
+  echo 'ERROR: Problem when generating certificate' >&2
+  exit 5
+ fi
+else
+ rm -f "$KEY_FILE" "$CSR_FILE"
+ echo 'ERROR: Problem when generating cert. request' >&2
+ exit 4
+fi
+
+(( flCreateBundle )) && {
+ tar -cjf bundle/${FQDN}_${SERVICE}.tbz2 crl/crl.pem cert/NAMOS_rootCA.crt dh2048.pem $CERT_FILE $KEY_FILE && \
+  echo "Your certificate bundle saved in ${CA_PATH}/bundle/${FQDN}_${SERVICE}.tbz2"
+}

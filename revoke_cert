@@ -1,0 +1,37 @@
+#!/bin/bash
+slf=${0##*/}
+doShowUsage () {
+ cat <<EOF >&2
+ Usage: $slf FQDN SERVICE
+          or
+        $slf CERT_FILE_PATH
+EOF
+ return 0
+}
+
+if [[ $# -eq 2 ]]; then
+ FQDN="$1"
+ SERVICE="$2"
+ pthCert="${CA_PATH}/cert/${FQDN}_${SERVICE}.crt"
+ [[ -f $pthCert ]] || {
+  echo "ERROR: no certificate file appropriate to specified FQDN and SERVICE found" >&2
+  exit 2
+ }
+elif [[ $# -eq 1 ]]; then 
+ pthCert="$1"
+ [[ -f $pthCert ]] || {
+  echo "ERROR: certificate file '$pthCert' not found" >&2
+  exit 2
+ }
+else
+ doShowUsage
+ exit 1
+fi
+
+cd "${CA_PATH}"
+if openssl ca -config conf/openssl.cnf -revoke "$pthCert"; then 
+ rm -f "$pthCert"
+ echo 'Certificate revoked' >&2
+else
+ echo 'Failed to revoke certificate' >&2
+fi
